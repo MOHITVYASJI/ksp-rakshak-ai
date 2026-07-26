@@ -94,17 +94,27 @@ def list_and_search_firs(
         "items": items
     }
 
-@router.get("/{fir_id}", response_model=FIRDetailResponse)
+from urllib.parse import unquote
+
+@router.get("/{fir_id:path}", response_model=FIRDetailResponse)
 def get_fir_case_detail(fir_id: str, db: Session = Depends(get_db), current_user: Officer = Depends(get_current_user)):
-    f = db.query(FIRRecord).filter((FIRRecord.id == fir_id) | (FIRRecord.fir_no == fir_id)).first()
+    clean_id = unquote(fir_id).strip()
+    f = db.query(FIRRecord).filter(
+        (FIRRecord.id == clean_id) | 
+        (FIRRecord.fir_no == clean_id) |
+        (FIRRecord.id == fir_id) |
+        (FIRRecord.fir_no == fir_id) |
+        (FIRRecord.fir_no.like(f"%{clean_id}%"))
+    ).first()
+
     if not f:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="FIR Record not found")
 
     stn = db.query(PoliceStation).filter(PoliceStation.id == f.station_id).first()
     io = db.query(Officer).filter(Officer.id == f.io_officer_id).first()
 
-    # Fetch child records
-    accused_links = db.query(FIRAccusedLink).filter(FIRAccusedLink.fir_id == fir_id).all()
+    # Fetch child records using internal database ID f.id
+    accused_links = db.query(FIRAccusedLink).filter(FIRAccusedLink.fir_id == f.id).all()
     accused_list = []
     for link in accused_links:
         acc = db.query(AccusedPerson).filter(AccusedPerson.id == link.accused_id).first()
@@ -118,22 +128,22 @@ def get_fir_case_detail(fir_id: str, db: Session = Depends(get_db), current_user
                 "gang_name": acc.gang_name
             })
 
-    victims = db.query(VictimPerson).filter(VictimPerson.fir_id == fir_id).all()
+    victims = db.query(VictimPerson).filter(VictimPerson.fir_id == f.id).all()
     victims_list = [{"id": v.id, "name": v.name, "age": v.age, "gender": v.gender, "phone_number": v.phone_number, "address": v.address} for v in victims]
 
-    witnesses = db.query(WitnessPerson).filter(WitnessPerson.fir_id == fir_id).all()
+    witnesses = db.query(WitnessPerson).filter(WitnessPerson.fir_id == f.id).all()
     witnesses_list = [{"name": w.name, "phone_number": w.phone_number, "statement": w.statement_summary} for w in witnesses]
 
-    vehicles = db.query(Vehicle).filter(Vehicle.fir_id == fir_id).all()
+    vehicles = db.query(Vehicle).filter(Vehicle.fir_id == f.id).all()
     vehicles_list = [{"registration_no": v.registration_no, "make_model": v.make_model, "status": v.status} for v in vehicles]
 
-    digital = db.query(DigitalEvidence).filter(DigitalEvidence.fir_id == fir_id).all()
+    digital = db.query(DigitalEvidence).filter(DigitalEvidence.fir_id == f.id).all()
     digital_list = [{"type": d.evidence_type, "value": d.value, "remarks": d.remarks} for d in digital]
 
-    evidence = db.query(EvidenceItem).filter(EvidenceItem.fir_id == fir_id).all()
+    evidence = db.query(EvidenceItem).filter(EvidenceItem.fir_id == f.id).all()
     evidence_list = [{"property_id": e.property_id, "description": e.description, "category": e.category} for e in evidence]
 
-    timeline = db.query(CaseTimeline).filter(CaseTimeline.fir_id == fir_id).order_by(CaseTimeline.event_date.asc()).all()
+    timeline = db.query(CaseTimeline).filter(CaseTimeline.fir_id == f.id).order_by(CaseTimeline.event_date.asc()).all()
     timeline_list = [{"event_date": t.event_date, "title": t.title, "description": t.description, "officer_name": t.officer_name} for t in timeline]
 
     result = {

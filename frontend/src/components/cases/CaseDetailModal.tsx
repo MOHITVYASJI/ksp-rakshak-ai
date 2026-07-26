@@ -10,20 +10,29 @@ interface CaseDetailModalProps {
 export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({ firId, onClose }) => {
   const [caseData, setCaseData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadCase = () => {
     if (!firId) return;
     setIsLoading(true);
+    setErrorMsg(null);
     fetchCaseDetail(firId)
       .then(data => setCaseData(data))
-      .catch(err => console.error(err))
+      .catch(err => {
+        console.error("Failed to load case dossier:", err);
+        setErrorMsg(err?.response?.data?.detail || "FIR Dossier record could not be loaded from CCTNS database.");
+      })
       .finally(() => setIsLoading(false));
+  };
+
+  useEffect(() => {
+    loadCase();
   }, [firId]);
 
   if (!firId) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 select-none">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 select-none font-mono text-xs">
       <div className="glass-panel w-full max-w-4xl max-h-[90vh] rounded-2xl border border-police-border flex flex-col overflow-hidden shadow-2xl">
         {/* Header */}
         <div className="p-4 border-b border-police-border bg-police-card flex items-center justify-between">
@@ -41,7 +50,7 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({ firId, onClose
                 )}
               </h2>
               <p className="text-[11px] text-police-muted">
-                {caseData?.station_name} • {caseData?.district}
+                {caseData?.station_name || 'Peenya Police Station'} • {caseData?.district || 'Bengaluru City'}
               </p>
             </div>
           </div>
@@ -52,8 +61,20 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({ firId, onClose
         </div>
 
         {/* Content Body */}
-        {isLoading || !caseData ? (
-          <div className="p-12 text-center text-xs font-mono text-police-muted">Fetching Case Dossier...</div>
+        {isLoading ? (
+          <div className="p-12 text-center text-xs font-mono text-police-highlight animate-pulse">Fetching Case Dossier from CCTNS Database...</div>
+        ) : errorMsg ? (
+          <div className="p-8 text-center space-y-3 font-mono text-xs">
+            <div className="text-rose-400 font-bold">⚠️ {errorMsg}</div>
+            <button
+              onClick={loadCase}
+              className="px-4 py-2 bg-police-accent hover:bg-police-highlight text-white font-bold rounded-lg transition shadow-md"
+            >
+              Retry Loading Case File
+            </button>
+          </div>
+        ) : !caseData ? (
+          <div className="p-12 text-center text-xs font-mono text-police-muted">No case data found.</div>
         ) : (
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Top Key Info Badges */}

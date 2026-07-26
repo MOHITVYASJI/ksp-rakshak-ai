@@ -43,7 +43,7 @@ export const fetchFIRCases = async (params: { query?: string; district?: string;
 };
 
 export const fetchCaseDetail = async (firId: string) => {
-  const res = await api.get(`/cases/${firId}`);
+  const res = await api.get(`/cases/${encodeURIComponent(firId)}`);
   return res.data;
 };
 
