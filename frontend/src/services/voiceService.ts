@@ -42,7 +42,7 @@ export class VoiceInteractionService {
   }
 
   /**
-   * Speaks concise AI summary aloud in English or Kannada.
+   * Speaks concise AI summary aloud in English or Kannada with natural realistic voice.
    */
   public speakSummary(text: string, isKannada: boolean = false, onEndCallback?: () => void) {
     if (!this.synth) return;
@@ -51,13 +51,27 @@ export class VoiceInteractionService {
     this.stopSpeaking();
 
     // Clean text of markdown or formatting symbols
-    const cleanText = text.replace(/[*#_`]/g, '').trim();
+    const cleanText = text.replace(/[*#_`]/g, '').replace(/https?:\/\/\S+/g, '').trim();
     if (!cleanText) return;
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = isKannada ? 'kn-IN' : 'en-IN';
-    utterance.rate = 1.0; // Standard speaking speed
+    const targetLang = isKannada ? 'kn-IN' : 'en-IN';
+    utterance.lang = targetLang;
+    utterance.rate = 0.94; // Smooth, natural professional cadence
     utterance.pitch = 1.0;
+
+    // Dynamic Natural Voice Selection
+    const voices = this.synth.getVoices();
+    if (voices && voices.length > 0) {
+      const preferredVoice = voices.find(v => 
+        (isKannada && (v.lang.includes('kn') || v.lang.includes('hi'))) ||
+        (!isKannada && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Ravi') || v.name.includes('India') || v.lang === 'en-IN'))
+      ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
+      
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+      }
+    }
 
     utterance.onstart = () => {
       this.isSpeakingState = true;

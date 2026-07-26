@@ -96,7 +96,7 @@ def list_and_search_firs(
 
 @router.get("/{fir_id}", response_model=FIRDetailResponse)
 def get_fir_case_detail(fir_id: str, db: Session = Depends(get_db), current_user: Officer = Depends(get_current_user)):
-    f = db.query(FIRRecord).filter(FIRRecord.id == fir_id).first()
+    f = db.query(FIRRecord).filter((FIRRecord.id == fir_id) | (FIRRecord.fir_no == fir_id)).first()
     if not f:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="FIR Record not found")
 

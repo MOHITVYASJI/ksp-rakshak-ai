@@ -67,6 +67,11 @@ export const fetchAuditLogs = async (limit: number = 50) => {
   return res.data;
 };
 
+export const verifyAuditChain = async () => {
+  const res = await api.get('/audit/verify-chain');
+  return res.data;
+};
+
 export const generateReport = async (payload: { report_type: string; district?: string; station_id?: string; crime_head?: string; title?: string }) => {
   const res = await api.post('/reports/generate', payload);
   return res.data;

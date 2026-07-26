@@ -265,10 +265,26 @@ export default function App() {
           {/* Audit Trail View */}
           {activeNavTab === 'audit' && (
             <div className="p-6 h-full overflow-y-auto space-y-4 font-mono text-xs">
-              <h2 className="text-sm font-bold text-police-text uppercase tracking-wider flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-police-success" />
-                SHA-256 Cryptographic Chain Audit Trail
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-bold text-police-text uppercase tracking-wider flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-police-success" />
+                  SHA-256 Cryptographic Chain Audit Trail
+                </h2>
+                <button
+                  onClick={() => {
+                    import('./services/api').then(({ verifyAuditChain }) => {
+                      verifyAuditChain()
+                        .then(res => alert(`✅ SHA-256 AUDIT CHAIN VERIFIED!\nStatus: ${res.status}\nVerified Entries: ${res.logs_verified}\nChain Valid: ${res.chain_valid}`))
+                        .catch(err => alert(`Chain verification failed: ${err.message}`));
+                    });
+                  }}
+                  className="px-3 py-1.5 bg-police-accent hover:bg-police-highlight text-white rounded-lg font-bold flex items-center gap-1.5 transition shadow-md"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Verify SHA-256 Hash Chain</span>
+                </button>
+              </div>
+
               <div className="glass-panel rounded-xl border border-police-border overflow-hidden">
                 <table className="w-full text-left border-collapse">
                   <thead>

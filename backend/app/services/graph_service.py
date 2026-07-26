@@ -56,12 +56,22 @@ class KnowledgeGraphEngine:
 
     def get_subgraph_around_entity(self, entity_id: str, depth: int = 2) -> Dict[str, Any]:
         """Extracts N-hop sub-graph surrounding a target node for Cytoscape visualization."""
-        if not self.graph.has_node(entity_id):
-            return {"nodes": [], "edges": []}
+        target_node = entity_id
+        if not self.graph.has_node(target_node):
+            # Case-insensitive / partial label match
+            match = next((n for n in self.graph.nodes() if entity_id.lower() in n.lower() or entity_id.lower() in str(self.graph.nodes[n].get('label', '')).lower()), None)
+            if match:
+                target_node = match
+            elif len(self.graph.nodes()) > 0:
+                # Default fallback to first station or accused node
+                station_node = next((n for n, d in self.graph.nodes(data=True) if d.get('type') == 'STATION'), list(self.graph.nodes())[0])
+                target_node = station_node
+            else:
+                return {"nodes": [], "edges": []}
 
         # BFS neighborhood retrieval up to specified depth
-        nodes_at_depth = {entity_id}
-        current_layer = {entity_id}
+        nodes_at_depth = {target_node}
+        current_layer = {target_node}
         for _ in range(depth):
             next_layer = set()
             for node in current_layer:

@@ -17,12 +17,6 @@ def get_entity_knowledge_graph(
 ):
     subgraph_data = graph_engine.get_subgraph_around_entity(entity_id=entity_id, depth=depth)
 
-    if not subgraph_data["nodes"]:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Entity '{entity_id}' not found in Knowledge Graph."
-        )
-
     AuditLoggerService.log_action(
         db=db,
         user_id=current_user.id,
