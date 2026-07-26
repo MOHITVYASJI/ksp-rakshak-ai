@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, ShieldAlert, Cpu, Activity, Clock, Globe, UserCheck, AlertTriangle } from 'lucide-react';
+import { Shield, ShieldAlert, Cpu, Activity, Clock, Globe, UserCheck, AlertTriangle, Search } from 'lucide-react';
 
 interface HeaderProps {
   serverStatus: 'checking' | 'online' | 'offline';
@@ -59,6 +59,16 @@ export const Header: React.FC<HeaderProps> = ({
           <AlertTriangle className="w-3.5 h-3.5 text-rose-400 animate-bounce" />
           <span className="font-bold text-[10px] tracking-wider">DEFCON 2: HIGH THREAT</span>
         </div>
+
+        {/* CTRL+K Command Palette Trigger Button */}
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('TOGGLE_COMMAND_PALETTE'))}
+          className="hidden xl:flex items-center gap-2 px-3 py-1 bg-police-card hover:bg-police-border/40 border border-police-border rounded-lg text-police-muted hover:text-police-text transition"
+        >
+          <Search className="w-3.5 h-3.5 text-police-highlight" />
+          <span className="text-[10px] font-mono font-bold">COMMAND PALETTE</span>
+          <span className="px-1.5 py-0.5 text-[9px] bg-police-accent/30 text-police-highlight rounded font-mono font-bold">CTRL+K</span>
+        </button>
       </div>
 
       {/* Center: System & CCTNS Network Telemetry Status */}

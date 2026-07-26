@@ -7,6 +7,7 @@ import { CrimeMap } from './components/maps/CrimeMap';
 import { AnalyticsCharts } from './components/analytics/AnalyticsCharts';
 import { CaseDetailModal } from './components/cases/CaseDetailModal';
 import { ReportCenter } from './components/reports/ReportCenter';
+import { CommandPalette } from './components/common/CommandPalette';
 
 import { AgentChatMessage, KnowledgeGraphData } from '@shared/types';
 import { 
@@ -21,6 +22,14 @@ export default function App() {
   const [rightPanelTab, setRightPanelTab] = useState<'graph' | 'map' | 'analytics'>('graph');
   const [kannadaMode, setKannadaMode] = useState(false);
   const [selectedStation, setSelectedStation] = useState('ALL');
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  // Command Palette Toggle Event Listener
+  useEffect(() => {
+    const handleToggle = () => setIsCommandPaletteOpen(prev => !prev);
+    window.addEventListener('TOGGLE_COMMAND_PALETTE', handleToggle);
+    return () => window.removeEventListener('TOGGLE_COMMAND_PALETTE', handleToggle);
+  }, []);
 
   // Messages & Data States
   const [messages, setMessages] = useState<AgentChatMessage[]>([]);
@@ -352,6 +361,20 @@ export default function App() {
           onClose={() => setActiveCaseModalId(null)}
         />
       )}
+
+      {/* Global Command Palette (CTRL+K) */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onSelectCommand={(query, category) => {
+          if (category === 'AUDIT') {
+            setActiveNavTab('audit');
+          } else {
+            setActiveNavTab('chat');
+            handleSendMessage(query);
+          }
+        }}
+      />
     </div>
   );
 }
