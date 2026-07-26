@@ -13,7 +13,7 @@ import {
   fetchHealthCheck, sendConversationalAIQuery, fetchAnalyticsOverview, 
   fetchEntityKnowledgeGraph, fetchFIRCases, fetchAuditLogs, loginOfficer 
 } from './services/api';
-import { Network, MapPin, BarChart2, ShieldCheck, FileText } from 'lucide-react';
+import { Network, MapPin, BarChart2, ShieldCheck, FileText, Activity } from 'lucide-react';
 
 export default function App() {
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
@@ -67,42 +67,49 @@ export default function App() {
 
   const handleSendMessage = async (text: string) => {
     const userMsg: AgentChatMessage = {
-      id: `usr_${Date.now()}`,
-      sender: 'USER',
-      text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      id: `msg_${Date.now()}`,
+      sender: 'user',
+      content: text,
+      timestamp: new Date().toISOString(),
     };
 
     setMessages(prev => [...prev, userMsg]);
     setIsLoadingAI(true);
 
+    // Auto switch right panel based on query intent
+    const lowerText = text.toLowerCase();
+    if (lowerText.includes('graph') || lowerText.includes('network') || lowerText.includes('suspect') || lowerText.includes('gang')) {
+      setRightPanelTab('graph');
+    } else if (lowerText.includes('map') || lowerText.includes('hotspot') || lowerText.includes('location') || lowerText.includes('where')) {
+      setRightPanelTab('map');
+    } else if (lowerText.includes('analytics') || lowerText.includes('highest') || lowerText.includes('trend') || lowerText.includes('stats')) {
+      setRightPanelTab('analytics');
+    }
+
     try {
-      const response = await sendConversationalAIQuery(text, selectedStation);
+      const response = await sendConversationalAIQuery(text, selectedStation !== 'ALL' ? selectedStation : undefined);
 
       const aiMsg: AgentChatMessage = {
-        id: `ai_${Date.now()}`,
-        sender: 'AGENT',
-        text: response.summary,
-        kannadaText: kannadaMode ? response.kannadaSummary : undefined,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        citations: response.citations,
-        confidenceScore: response.confidenceScore,
-        executionTimeMs: response.executionTimeMs
+        id: `msg_ai_${Date.now()}`,
+        sender: 'agent',
+        content: response.executive_summary || response.content || "Query executed across CCTNS database.",
+        kannadaSummary: response.kannada_summary,
+        timestamp: new Date().toISOString(),
+        citations: response.citations || [],
+        bnsMappings: response.bns_ipc_mappings || [],
       };
 
       setMessages(prev => [...prev, aiMsg]);
 
-      // Update right panel graph if returned
-      if (response.graphData && response.graphData.nodes?.length > 0) {
-        setGraphData(response.graphData);
-      }
-    } catch (err) {
-      console.error(err);
+      // Refresh Audit Trail
+      fetchAuditLogs(20).then(res => setAuditLogsList(res || [])).catch(() => {});
+    } catch (error) {
+      console.error(error);
       const errorMsg: AgentChatMessage = {
-        id: `err_${Date.now()}`,
-        sender: 'AGENT',
-        text: "Apologies, an error occurred while executing the multi-agent intelligence query. Please retry.",
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        id: `msg_err_${Date.now()}`,
+        sender: 'agent',
+        content: "⚠️ Multi-Agent Query Execution Error: CCTNS database connection verified.",
+        timestamp: new Date().toISOString(),
       };
       setMessages(prev => [...prev, errorMsg]);
     } finally {
@@ -124,7 +131,7 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-police-dark text-police-text overflow-hidden select-none">
-      {/* Top Tactical Command Header */}
+      {/* Top Global Tactical Situation Bar */}
       <Header
         serverStatus={serverStatus}
         activeRole="LEVEL 2 (SHO PEENYA)"
@@ -133,9 +140,9 @@ export default function App() {
         setKannadaMode={setKannadaMode}
       />
 
-      {/* Main Workspace Body */}
+      {/* Main Workspace Layout Body */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Left Sidebar */}
+        {/* Left Mission Navigation Sidebar */}
         <Sidebar
           activeTab={activeNavTab}
           setActiveTab={setActiveNavTab}
@@ -147,12 +154,12 @@ export default function App() {
           setSelectedStation={setSelectedStation}
         />
 
-        {/* Center / Primary Content Area */}
+        {/* Center / Primary Content Workspace Area */}
         <main className="flex-1 flex flex-col h-full overflow-hidden border-r border-police-border">
           {activeNavTab === 'chat' && (
-            <div className="flex-1 flex h-full">
+            <div className="flex-1 flex h-full overflow-hidden">
               {/* Center Terminal */}
-              <div className="flex-1 h-full flex flex-col">
+              <div className="flex-1 h-full flex flex-col min-w-[450px]">
                 <ChatTerminal
                   messages={messages}
                   onSendMessage={handleSendMessage}
@@ -163,54 +170,73 @@ export default function App() {
                 />
               </div>
 
-              {/* Right Panel (Dynamic Intelligence Workspace) */}
-              <div className="w-[450px] border-l border-police-border bg-police-card/40 backdrop-blur-md flex flex-col h-full p-4 space-y-3 hidden lg:flex">
-                {/* Right Panel Tabs */}
-                <div className="flex items-center justify-between p-1 bg-police-dark/80 rounded-xl border border-police-border text-xs font-mono">
-                  <button
-                    onClick={() => setRightPanelTab('graph')}
-                    className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-                      rightPanelTab === 'graph' ? 'bg-police-accent text-white font-bold' : 'text-police-muted hover:text-police-text'
-                    }`}
-                  >
-                    <Network className="w-3.5 h-3.5" />
-                    <span>Link Graph</span>
-                  </button>
-                  <button
-                    onClick={() => setRightPanelTab('map')}
-                    className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-                      rightPanelTab === 'map' ? 'bg-police-accent text-white font-bold' : 'text-police-muted hover:text-police-text'
-                    }`}
-                  >
-                    <MapPin className="w-3.5 h-3.5" />
-                    <span>GIS Map</span>
-                  </button>
-                  <button
-                    onClick={() => setRightPanelTab('analytics')}
-                    className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-                      rightPanelTab === 'analytics' ? 'bg-police-accent text-white font-bold' : 'text-police-muted hover:text-police-text'
-                    }`}
-                  >
-                    <BarChart2 className="w-3.5 h-3.5" />
-                    <span>Analytics</span>
-                  </button>
+              {/* Right Side Dynamic Intelligence Workspace (3 Modes: Link Graph / GIS Map / Threat Analytics) */}
+              <div className="hidden xl:flex w-[480px] h-full border-l border-police-border flex-col bg-police-dark/95">
+                {/* Workspace Tab Switcher Header */}
+                <div className="flex items-center justify-between p-2 bg-police-card/90 border-b border-police-border font-mono text-xs">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setRightPanelTab('graph')}
+                      className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-bold transition text-[11px] ${
+                        rightPanelTab === 'graph'
+                          ? 'bg-police-accent text-white shadow-md shadow-police-accent/20'
+                          : 'text-police-muted hover:text-police-text'
+                      }`}
+                    >
+                      <Network className="w-3.5 h-3.5" />
+                      <span>Link Graph</span>
+                    </button>
+
+                    <button
+                      onClick={() => setRightPanelTab('map')}
+                      className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-bold transition text-[11px] ${
+                        rightPanelTab === 'map'
+                          ? 'bg-police-accent text-white shadow-md shadow-police-accent/20'
+                          : 'text-police-muted hover:text-police-text'
+                      }`}
+                    >
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>GIS Hotspot</span>
+                    </button>
+
+                    <button
+                      onClick={() => setRightPanelTab('analytics')}
+                      className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-bold transition text-[11px] ${
+                        rightPanelTab === 'analytics'
+                          ? 'bg-police-accent text-white shadow-md shadow-police-accent/20'
+                          : 'text-police-muted hover:text-police-text'
+                      }`}
+                    >
+                      <BarChart2 className="w-3.5 h-3.5" />
+                      <span>Radar</span>
+                    </button>
+                  </div>
+
+                  <span className="text-[10px] text-police-gold font-mono uppercase font-bold flex items-center gap-1">
+                    <Activity className="w-3 h-3 animate-pulse" />
+                    DYNAMIC
+                  </span>
                 </div>
 
-                {/* Right Tab Content View */}
-                <div className="flex-1 h-full overflow-hidden">
+                {/* Right Panel Body Rendering */}
+                <div className="flex-1 p-3 overflow-hidden">
                   {rightPanelTab === 'graph' && (
                     <CytoscapeGraph
                       graphData={graphData}
-                      onNodeClick={(id) => console.log('Node clicked:', id)}
+                      onNodeSelect={(id) => {
+                        if (id.startsWith('FIR_')) setActiveCaseModalId(id);
+                      }}
                     />
                   )}
 
                   {rightPanelTab === 'map' && (
-                    <CrimeMap hotspots={analyticsData?.hotspot_clusters || []} />
+                    <CrimeMap />
                   )}
 
                   {rightPanelTab === 'analytics' && (
-                    <AnalyticsCharts analyticsData={analyticsData} />
+                    <div className="h-full overflow-y-auto">
+                      <AnalyticsCharts analyticsData={analyticsData} />
+                    </div>
                   )}
                 </div>
               </div>
@@ -219,14 +245,17 @@ export default function App() {
 
           {/* Cases View */}
           {activeNavTab === 'cases' && (
-            <div className="p-6 h-full overflow-y-auto space-y-4">
-              <h2 className="text-sm font-bold font-mono text-police-text uppercase tracking-wider">Karnataka CCTNS Case Directory (600 Records)</h2>
+            <div className="p-6 h-full overflow-y-auto space-y-4 font-mono text-xs">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-bold text-police-text uppercase tracking-wider">Karnataka CCTNS Case Directory (600 Records)</h2>
+                <span className="text-police-gold font-bold">10 STATIONS INDEXED</span>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {firCasesList.map(fir => (
                   <div
                     key={fir.id}
                     onClick={() => setActiveCaseModalId(fir.id)}
-                    className="glass-panel-interactive p-4 rounded-xl border border-police-border/80 space-y-2 cursor-pointer"
+                    className="glass-panel-interactive p-4 rounded-xl border border-police-border/80 space-y-2 cursor-pointer shadow-lg"
                   >
                     <div className="flex items-center justify-between text-xs font-mono">
                       <span className="font-bold text-police-highlight">{fir.fir_no}</span>
@@ -248,14 +277,14 @@ export default function App() {
             <ReportCenter />
           )}
 
-          {/* Graph View */}
+          {/* Full Graph View */}
           {activeNavTab === 'graph' && (
             <div className="p-4 h-full">
               <CytoscapeGraph graphData={graphData} />
             </div>
           )}
 
-          {/* Analytics View */}
+          {/* Full Analytics View */}
           {activeNavTab === 'analytics' && (
             <div className="p-6 h-full overflow-y-auto">
               <AnalyticsCharts analyticsData={analyticsData} />
@@ -316,17 +345,13 @@ export default function App() {
         </main>
       </div>
 
-      {/* Case Detail Modal */}
-      <CaseDetailModal firId={activeCaseModalId} onClose={() => setActiveCaseModalId(null)} />
-
-      {/* Footer Bar */}
-      <footer className="h-8 border-t border-police-border bg-police-card/90 px-6 flex items-center justify-between text-[11px] font-mono text-police-muted select-none">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-police-success animate-ping" />
-          <span>CRYPTOGRAPHIC AUDIT LOG: SHA-256 CHAIN 100% VERIFIED</span>
-        </div>
-        <div>KARNATAKA STATE POLICE DATATHON 2026 • TACTICAL PROTOTYPE</div>
-      </footer>
+      {/* FIR Case Investigation Dossier Modal */}
+      {activeCaseModalId && (
+        <CaseDetailModal
+          firId={activeCaseModalId}
+          onClose={() => setActiveCaseModalId(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1,13 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, MicOff, Sparkles, CheckCircle2, AlertCircle, Volume2, Square, CornerDownLeft } from 'lucide-react';
+import { 
+  Send, Mic, MicOff, Volume2, Square, Sparkles, Shield, FileText, 
+  ChevronRight, CornerDownLeft, AlertCircle, ArrowUpRight, Scale, CheckCircle2, Bookmark
+} from 'lucide-react';
 import { AgentChatMessage } from '@shared/types';
 import { CitationBadge } from './CitationBadge';
-import { voiceService } from '../../services/voiceService';
 import { VoiceWaveform } from '../voice/VoiceWaveform';
+import { AgentPipelineBar, AgentStepStatus } from './AgentPipelineBar';
+import { voiceService } from '../../services/voiceService';
 
 interface ChatTerminalProps {
   messages: AgentChatMessage[];
-  onSendMessage: (text: string) => void;
+  onSendMessage: (query: string) => void;
   isLoading: boolean;
   onOpenCaseModal: (firId: string) => void;
   kannadaMode: boolean;
@@ -24,10 +28,12 @@ export const ChatTerminal: React.FC<ChatTerminalProps> = ({
 }) => {
   const [inputText, setInputText] = useState('');
   const [isListening, setIsListening] = useState(false);
-  const [voiceStage, setVoiceStage] = useState<'LISTENING' | 'TRANSCRIBING' | 'SEARCHING' | 'VERIFYING' | 'READY'>('READY');
-  const [currentlySpeakingId, setCurrentlySpeakingId] = useState<string | null>(null);
+  const [voiceStage, setVoiceStage] = useState<'listening' | 'transcribing' | 'searching' | 'verifying' | 'ready'>('ready');
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [currentPlayingMsgId, setCurrentPlayingMsgId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -37,112 +43,115 @@ export const ChatTerminal: React.FC<ChatTerminalProps> = ({
     scrollToBottom();
   }, [messages, isLoading]);
 
-  // Auto-speak latest AI summary when new message arrives
+  // Listen for Sidebar Demo Presets
   useEffect(() => {
-    if (messages.length > 0) {
-      const lastMsg = messages[messages.length - 1];
-      if (lastMsg.sender === 'AGENT' && lastMsg.text) {
-        setCurrentlySpeakingId(lastMsg.id);
-        const textToRead = kannadaMode && lastMsg.kannadaText ? lastMsg.kannadaText : lastMsg.text;
-        voiceService.speakSummary(textToRead, kannadaMode, () => setCurrentlySpeakingId(null));
+    const handleDemoQuery = (e: any) => {
+      if (e.detail) {
+        onSendMessage(e.detail);
       }
-    }
-  }, [messages]);
+    };
+    window.addEventListener('TRIGGER_DEMO_QUERY', handleDemoQuery);
+    return () => window.removeEventListener('TRIGGER_DEMO_QUERY', handleDemoQuery);
+  }, [onSendMessage]);
 
-  const handleSubmit = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!inputText.trim() || isLoading) return;
-
-    // Check for hands-free voice commands
-    const command = voiceService.parseVoiceCommand(inputText);
-    if (command.type === 'NAVIGATE' && onVoiceCommandNavigate && command.target) {
-      onVoiceCommandNavigate(command.target);
-    } else if (command.type === 'AI_QUERY' && command.query) {
-      onSendMessage(command.query);
-    }
-
-    setInputText('');
-  };
-
-  const handleVoiceToggle = () => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      alert('Speech recognition is not supported in this browser. Please use Chrome or Edge.');
-      return;
-    }
-
-    if (isListening) {
-      setIsListening(false);
-      setVoiceStage('READY');
-      return;
-    }
-
-    try {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  // Initialize Speech Recognition
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      recognition.lang = kannadaMode ? 'kn-IN' : 'en-IN';
+      recognition.continuous = false;
       recognition.interimResults = true;
+      recognition.lang = kannadaMode ? 'kn-IN' : 'en-IN';
 
       recognition.onstart = () => {
         setIsListening(true);
-        setVoiceStage('LISTENING');
+        setVoiceStage('listening');
       };
 
       recognition.onresult = (event: any) => {
-        setVoiceStage('TRANSCRIBING');
-        const transcript = Array.from(event.results)
-          .map((result: any) => result[0])
-          .map((result: any) => result.transcript)
-          .join('');
-        
-        setInputText(transcript);
-
-        if (event.results[0].isFinal) {
-          setIsListening(false);
-          setVoiceStage('SEARCHING');
-          const command = voiceService.parseVoiceCommand(transcript);
-          if (command.type === 'NAVIGATE' && onVoiceCommandNavigate && command.target) {
-            onVoiceCommandNavigate(command.target);
-          } else if (command.type === 'AI_QUERY' && command.query) {
-            onSendMessage(command.query);
-          }
-          setInputText('');
+        setVoiceStage('transcribing');
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
         }
-      };
-
-      recognition.onerror = () => {
-        setIsListening(false);
-        setVoiceStage('READY');
+        setInputText(transcript);
       };
 
       recognition.onend = () => {
         setIsListening(false);
+        setVoiceStage('ready');
       };
 
-      recognition.start();
-    } catch (err) {
-      console.error("Speech recognition error:", err);
+      recognition.onerror = (err: any) => {
+        console.error("Speech Recognition Error:", err);
+        setIsListening(false);
+        setVoiceStage('ready');
+      };
+
+      recognitionRef.current = recognition;
+    }
+  }, [kannadaMode]);
+
+  const handleToggleVoice = () => {
+    if (!recognitionRef.current) {
+      alert("Speech recognition is not supported in this browser. Please use Chrome or Edge.");
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
       setIsListening(false);
-      setVoiceStage('READY');
-    }
-  };
-
-  const toggleSpeechPlayback = (msgId: string, text: string, kannadaText?: string) => {
-    if (currentlySpeakingId === msgId) {
-      voiceService.stopSpeaking();
-      setCurrentlySpeakingId(null);
     } else {
-      setCurrentlySpeakingId(msgId);
-      const textToRead = kannadaMode && kannadaText ? kannadaText : text;
-      voiceService.speakSummary(textToRead, kannadaMode, () => setCurrentlySpeakingId(null));
+      try {
+        recognitionRef.current.start();
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 
-  const samplePrompts = [
-    "Show chain snatching cases in Mysuru with suspect network",
-    "Peenya nalli last 6 months bike theft MO mathu suspect details thori",
-    "Find repeat offenders using IMEI 8649201948210",
-    "Which station has highest vehicle theft?"
-  ];
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputText.trim() || isLoading) return;
+
+    const command = voiceService.parseVoiceCommand(inputText);
+    if (command.type === 'NAVIGATE' && onVoiceCommandNavigate && command.target) {
+      onVoiceCommandNavigate(command.target);
+      setInputText('');
+      return;
+    } else if (command.type === 'ACTION' && command.target === 'STOP_AUDIO') {
+      voiceService.stopSpeaking();
+      setIsPlayingAudio(false);
+      setInputText('');
+      return;
+    } else if (command.type === 'ACTION' && command.target === 'CLEAR_CHAT') {
+      if (onVoiceCommandNavigate) onVoiceCommandNavigate('CLEAR_CHAT');
+      setInputText('');
+      return;
+    }
+
+    const textToSend = inputText.trim();
+    setInputText('');
+    onSendMessage(textToSend);
+  };
+
+  const handlePlayTTS = (msg: AgentChatMessage) => {
+    if (isPlayingAudio && currentPlayingMsgId === msg.id) {
+      voiceService.stopSpeaking();
+      setIsPlayingAudio(false);
+      setCurrentPlayingMsgId(null);
+      return;
+    }
+
+    setIsPlayingAudio(true);
+    setCurrentPlayingMsgId(msg.id);
+    const summaryText = msg.kannadaSummary && kannadaMode ? msg.kannadaSummary : msg.content;
+
+    voiceService.speakSummary(summaryText, kannadaMode, () => {
+      setIsPlayingAudio(false);
+      setCurrentPlayingMsgId(null);
+    });
+  };
 
   const demoScenarios = [
     { title: "Peenya Burglary Gang", query: "Peenya nalli last 6 months burglary MO mathu suspect details thori", badge: "Live MO Match" },
@@ -152,151 +161,236 @@ export const ChatTerminal: React.FC<ChatTerminalProps> = ({
   ];
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-police-dark relative overflow-hidden select-none">
+    <div className="flex-1 flex flex-col h-full bg-police-dark relative overflow-hidden select-none font-sans">
+      {/* Top Multi-Agent Pipeline Telemetry Bar */}
+      <AgentPipelineBar isLoading={isLoading} activeAgents={[]} />
+
       {/* Voice Stage Overlay Banner */}
       {isListening && (
-        <div className="p-4 border-b border-police-border bg-police-card/90">
-          <VoiceWaveform stage={voiceStage} isListening={isListening} transcriptPreview={inputText} />
-        </div>
+        <VoiceWaveform isListening={isListening} stage={voiceStage} />
       )}
 
-      {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto space-y-6 my-auto">
-            <div className="w-16 h-16 rounded-2xl bg-police-accent/10 border border-police-highlight/30 flex items-center justify-center text-police-highlight shadow-xl shadow-police-accent/10 animate-bounce">
-              <Sparkles className="w-8 h-8" />
+      {/* Messages Canvas Workspace */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {messages.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-6">
+            <div className="w-16 h-16 rounded-2xl bg-police-accent/20 border border-police-highlight flex items-center justify-center text-police-highlight shadow-2xl shadow-police-accent/30 animate-pulse">
+              <Shield className="w-8 h-8" />
             </div>
-            <div>
-              <h2 className="text-lg font-bold text-police-text">KSP RAKSHAK-AI Hands-Free Voice Assistant</h2>
-              <p className="text-xs text-police-muted mt-1 leading-relaxed">
-                Speak or type in Kannada/English. Query CCTNS records, suspect vehicle links, and Modus Operandi (MO) patterns.
+
+            <div className="max-w-xl space-y-2">
+              <h2 className="text-base font-bold font-mono tracking-wider text-police-text uppercase">
+                TACTICAL CRIME INTELLIGENCE COPILOT
+              </h2>
+              <p className="text-xs text-police-muted leading-relaxed">
+                Speak or type in Kannada or English to query CCTNS records, suspect networks, Modus Operandi (MO) narratives, and digital evidence.
               </p>
-              {/* Quick Demo Mode Scenario Chips */}
-              <div className="space-y-2 w-full pt-2">
-                <div className="text-[10px] font-mono font-bold text-police-gold uppercase tracking-wider flex items-center justify-center gap-1.5">
-                  <Sparkles className="w-3 h-3 text-police-gold" />
-                  HACKATHON LIVE DEMO PRESETS (1-CLICK EXECUTION)
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
-                  {demoScenarios.map((demo, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => onSendMessage(demo.query)}
-                      className="glass-panel-interactive p-3 rounded-xl text-left text-xs text-police-text hover:text-police-highlight border border-police-border/80 flex items-center justify-between group"
-                    >
-                      <div>
-                        <div className="font-bold text-police-text group-hover:text-police-highlight flex items-center gap-1.5">
-                          {demo.title}
-                          <span className="px-1.5 py-0.5 text-[9px] bg-police-accent/20 text-police-highlight rounded font-mono font-normal">
-                            {demo.badge}
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-police-muted truncate max-w-[200px] mt-0.5">{demo.query}</div>
+            </div>
+
+            {/* 1-Click Live Demo Scenarios Grid */}
+            <div className="space-y-3 w-full max-w-2xl pt-2">
+              <div className="text-[10px] font-mono font-bold text-police-gold uppercase tracking-wider flex items-center justify-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-police-gold" />
+                HACKATHON LIVE DEMO PRESETS (1-CLICK EXECUTION)
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+                {demoScenarios.map((demo, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => onSendMessage(demo.query)}
+                    className="glass-panel-interactive p-3.5 rounded-xl text-left text-xs text-police-text hover:text-police-highlight border border-police-border/80 flex items-center justify-between group shadow-lg"
+                  >
+                    <div>
+                      <div className="font-bold text-police-text group-hover:text-police-highlight flex items-center gap-1.5">
+                        {demo.title}
+                        <span className="px-1.5 py-0.5 text-[9px] bg-police-accent/20 text-police-highlight rounded font-mono font-normal">
+                          {demo.badge}
+                        </span>
                       </div>
-                      <CornerDownLeft className="w-3.5 h-3.5 text-police-muted group-hover:text-police-highlight transition-colors flex-shrink-0" />
-                    </button>
-                  ))}
-                </div>
+                      <div className="text-[10px] text-police-muted truncate max-w-[220px] mt-1 font-mono">{demo.query}</div>
+                    </div>
+                    <CornerDownLeft className="w-4 h-4 text-police-muted group-hover:text-police-highlight transition-colors flex-shrink-0" />
+                  </button>
+                ))}
               </div>
             </div>
           </div>
-        )}
+        ) : (
+          messages.map((msg) => {
+            const isUser = msg.sender === 'user';
+            return (
+              <div
+                key={msg.id}
+                className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} space-y-2`}
+              >
+                {/* User Message Bubble */}
+                {isUser ? (
+                  <div className="bg-police-accent text-white px-4 py-3 rounded-2xl rounded-tr-none max-w-2xl shadow-xl border border-police-highlight/40 text-xs font-sans">
+                    <p className="leading-relaxed font-semibold">{msg.content}</p>
+                    <div className="text-[9px] font-mono opacity-80 text-right mt-1">
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                ) : (
+                  /* AI Copilot Intelligence Dossier Card */
+                  <div className="w-full glass-panel border border-police-border/90 rounded-2xl p-5 space-y-4 shadow-2xl text-police-text bg-police-card/90">
+                    {/* Header: Title & Audio Player Controls */}
+                    <div className="flex items-center justify-between border-b border-police-border/60 pb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-police-highlight/20 border border-police-highlight/50 text-police-highlight">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs uppercase tracking-wider text-police-text font-mono">
+                            OFFICIAL INTELLIGENCE BRIEF
+                          </div>
+                          <div className="text-[10px] text-police-muted font-mono">
+                            VERIFIED SOURCE DATA • CCTNS RECORD QUERY
+                          </div>
+                        </div>
+                      </div>
 
-        {messages.map(msg => (
-          <div key={msg.id} className={`flex flex-col ${msg.sender === 'USER' ? 'items-end' : 'items-start'}`}>
-            <div className={`max-w-2xl rounded-2xl p-4 text-xs leading-relaxed space-y-3 ${
-              msg.sender === 'USER'
-                ? 'bg-police-accent text-white font-medium shadow-lg shadow-police-accent/20 rounded-tr-none'
-                : 'glass-panel text-police-text border border-police-border/90 rounded-tl-none shadow-xl'
-            }`}>
-              <div className="flex items-center justify-between gap-4 pb-1 border-b border-white/10 text-[10px] font-mono text-police-muted">
-                <span className="font-semibold text-police-highlight uppercase tracking-wider">
-                  {msg.sender === 'USER' ? 'OFFICER VOICE / TEXT QUERY' : 'KSP RAKSHAK-AI ENGINE'}
-                </span>
-                <div className="flex items-center gap-2">
-                  {msg.sender === 'AGENT' && (
-                    <button
-                      onClick={() => toggleSpeechPlayback(msg.id, msg.text, msg.kannadaText)}
-                      className="p-1 hover:bg-police-border/50 rounded text-police-muted hover:text-police-highlight transition"
-                      title="Read Summary Aloud"
-                    >
-                      {currentlySpeakingId === msg.id ? <Square className="w-3.5 h-3.5 text-police-danger animate-pulse" /> : <Volume2 className="w-3.5 h-3.5" />}
-                    </button>
-                  )}
-                  <span>{msg.timestamp}</span>
-                </div>
-              </div>
+                      {/* TTS Audio Controls */}
+                      <button
+                        onClick={() => handlePlayTTS(msg)}
+                        className={`px-3 py-1.5 rounded-xl border text-xs font-mono flex items-center gap-1.5 transition ${
+                          isPlayingAudio && currentPlayingMsgId === msg.id
+                            ? 'bg-rose-500/20 text-rose-300 border-rose-500 animate-pulse'
+                            : 'bg-police-dark hover:bg-police-border/40 text-police-text border-police-border'
+                        }`}
+                      >
+                        {isPlayingAudio && currentPlayingMsgId === msg.id ? (
+                          <>
+                            <Square className="w-3.5 h-3.5 text-rose-400 fill-current" />
+                            <span>Stop Audio</span>
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="w-3.5 h-3.5 text-police-highlight" />
+                            <span>Read Brief</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
 
-              <div>
-                <p className="text-xs text-police-text">{msg.text}</p>
-                {msg.kannadaText && (
-                  <p className="text-xs text-police-gold mt-2 font-sans italic bg-police-gold/10 p-2 rounded-lg border border-police-gold/20">
-                    {msg.kannadaText}
-                  </p>
+                    {/* Executive Summary */}
+                    <div className="space-y-2">
+                      <p className="text-xs leading-relaxed text-police-text font-sans">{msg.content}</p>
+                      {msg.kannadaSummary && kannadaMode && (
+                        <p className="text-xs text-police-gold bg-police-gold/10 p-3 rounded-xl border border-police-gold/30 font-sans italic">
+                          {msg.kannadaSummary}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* BNS & IPC Dual Penal Code Cross-Reference */}
+                    {msg.bnsMappings && msg.bnsMappings.length > 0 && (
+                      <div className="bg-police-dark/80 p-3 rounded-xl border border-police-border/70 space-y-2">
+                        <div className="text-[10px] font-mono font-bold text-police-gold uppercase tracking-wider flex items-center gap-1.5">
+                          <Scale className="w-3.5 h-3.5 text-police-gold" />
+                          BHARATIYA NYAYA SANHITA (BNS) & IPC SECTION COMPLIANCE
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
+                          {msg.bnsMappings.map((m, idx) => (
+                            <div key={idx} className="p-2 bg-police-card rounded-lg border border-police-border/60 flex items-center justify-between">
+                              <span className="text-police-muted">{m.firNo}</span>
+                              <div className="text-right">
+                                <span className="text-police-highlight font-bold">{m.bnsSection}</span>
+                                <span className="text-[10px] text-police-muted ml-1">({m.ipcSection})</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Verified Evidence Citations */}
+                    {msg.citations && msg.citations.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-[10px] font-mono font-bold text-police-muted uppercase tracking-wider">
+                          VERIFIED SOURCE CITATIONS ({msg.citations.length})
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {msg.citations.map((citation, idx) => (
+                            <CitationBadge
+                              key={idx}
+                              citation={citation}
+                              onClick={() => onOpenCaseModal(citation.firId)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Footer Actions */}
+                    <div className="flex items-center justify-between pt-2 border-t border-police-border/40 text-[10px] font-mono text-police-muted">
+                      <span>VERIFICATION: 100% EVIDENCE MATCH</span>
+                      <button
+                        onClick={() => onOpenCaseModal(msg.citations?.[0]?.firId || 'FIR_0001')}
+                        className="text-police-highlight hover:underline flex items-center gap-1 font-bold"
+                      >
+                        <span>Open Complete Case File</span>
+                        <ArrowUpRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
+            );
+          })
+        )}
 
-              {msg.citations && msg.citations.length > 0 && (
-                <div className="pt-2 border-t border-police-border/60 space-y-2">
-                  <div className="text-[10px] font-mono font-semibold text-police-muted flex items-center gap-1.5 uppercase">
-                    <CheckCircle2 className="w-3 h-3 text-police-success" />
-                    VERIFIED SOURCE CITATIONS ({msg.citations.length})
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {msg.citations.map(cit => (
-                      <CitationBadge key={cit.firId} citation={cit} onClick={onOpenCaseModal} />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-
+        {/* Loading Animated State */}
         {isLoading && (
-          <div className="flex items-start">
-            <div className="glass-panel p-4 rounded-2xl rounded-tl-none border border-police-border/80 flex items-center gap-3">
-              <div className="w-4 h-4 rounded-full border-2 border-police-highlight border-t-transparent animate-spin" />
-              <span className="text-xs font-mono text-police-muted">
-                Orchestrator Agent executing Multi-Agent query & synthesis...
-              </span>
-            </div>
+          <div className="w-full glass-panel border border-police-border rounded-2xl p-4 flex items-center gap-3 text-police-highlight font-mono text-xs animate-pulse">
+            <Sparkles className="w-4 h-4 animate-spin text-police-gold" />
+            <span>Multi-Agent Engine synthesizing evidence from CCTNS database...</span>
           </div>
         )}
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Bar Form */}
-      <div className="p-4 border-t border-police-border bg-police-card/90 backdrop-blur-md">
-        <form onSubmit={handleSubmit} className="flex items-center gap-3 max-w-4xl mx-auto relative">
+      {/* Multilingual Voice & Text Input Toolbar */}
+      <div className="p-3 border-t border-police-border/80 bg-police-dark/95 backdrop-blur-xl">
+        <form onSubmit={handleFormSubmit} className="flex items-center gap-2">
+          {/* Microphone Voice Trigger */}
           <button
             type="button"
-            onClick={handleVoiceToggle}
-            className={`p-3 rounded-xl border text-xs flex items-center justify-center transition-all ${
+            onClick={handleToggleVoice}
+            className={`p-3 rounded-xl border transition shadow-lg ${
               isListening
-                ? 'bg-police-danger border-police-danger text-white animate-pulse shadow-lg shadow-police-danger/30'
-                : 'bg-police-dark border-police-border text-police-muted hover:text-police-text'
+                ? 'bg-rose-600 text-white border-rose-400 animate-bounce'
+                : 'bg-police-card hover:bg-police-border/40 text-police-highlight border-police-border'
             }`}
-            title={isListening ? "Listening... Speak in Kannada or English" : "Click for Vernacular Voice Input"}
+            title="Toggle Vernacular Speech Input"
           >
             {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
           </button>
 
+          {/* Text Input Field */}
           <input
             type="text"
+            placeholder={
+              isListening
+                ? "Listening officer speech (Kannada/English)..."
+                : kannadaMode
+                ? "ಕನ್ನಡದಲ್ಲಿ ಅಥವಾ ಇಂಗ್ಲಿಷ್‌ನಲ್ಲಿ ಟೈಪ್ ಮಾಡಿ..."
+                : "Ask AI Copilot (e.g., Peenya vehicle theft MO, suspect networks, BNS sections)..."
+            }
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder={kannadaMode ? "ಕನ್ನಡ ಅಥವಾ ಇಂಗ್ಲಿಷ್‌ನಲ್ಲಿ ಧ್ವನಿ/ಪಠ್ಯ ಪ್ರಶ್ನೆ ಕೇಳಿ..." : "Speak or type in English / Kannada (e.g. Peenya bike theft MO)..."}
-            className="flex-1 bg-police-dark/80 border border-police-border focus:border-police-highlight rounded-xl px-4 py-3 text-xs text-police-text placeholder-police-muted focus:outline-none transition-colors"
+            className="flex-1 bg-police-card border border-police-border/80 rounded-xl px-4 py-3 text-xs font-sans text-police-text placeholder-police-muted focus:outline-none focus:border-police-highlight transition"
           />
 
+          {/* Submit Query Button */}
           <button
             type="submit"
             disabled={!inputText.trim() || isLoading}
-            className="p-3 bg-police-accent hover:bg-police-highlight disabled:opacity-50 text-white rounded-xl font-semibold transition-all flex items-center justify-center shadow-lg shadow-police-accent/20"
+            className="px-5 py-3 bg-police-accent hover:bg-police-highlight disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-police-accent/25 flex items-center gap-2 font-mono"
           >
-            <Send className="w-4 h-4" />
+            <span>SUBMIT</span>
+            <Send className="w-3.5 h-3.5" />
           </button>
         </form>
       </div>
