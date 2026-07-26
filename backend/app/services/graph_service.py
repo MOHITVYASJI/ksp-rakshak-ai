@@ -52,10 +52,34 @@ class KnowledgeGraphEngine:
                 self.graph.add_node(dig_id, label=dig["value"], type="DIGITAL_EVIDENCE", details=dig)
             self.graph.add_edge(dig_id, dig["fir_id"], label=f"EVIDENCE_{dig['evidence_type']}", weight=1.0)
 
-        print(f"[GRAPH] Knowledge Graph constructed with {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges.")
+    def initialize_from_db(self, db):
+        """Builds graph directly from DB session if in-memory graph is unpopulated."""
+        try:
+            from app.models.domain import PoliceStation, AccusedPerson, FIRRecord, FIRAccusedLink, Vehicle, DigitalEvidence
+            stations = [{"id": s.id, "name": s.name, "district": s.district} for s in db.query(PoliceStation).all()]
+            accused = [{"id": a.id, "name": a.name, "alias": a.alias, "history_sheet_no": a.history_sheet_no, "gang_name": a.gang_name} for a in db.query(AccusedPerson).all()]
+            firs = [{"id": f.id, "fir_no": f.fir_no, "station_id": f.station_id, "crime_head": f.crime_head, "bns_sections": f.bns_sections, "registration_date": f.registration_date} for f in db.query(FIRRecord).all()]
+            links = [{"accused_id": l.accused_id, "fir_id": l.fir_id, "relationship_type": l.relationship_type} for l in db.query(FIRAccusedLink).all()]
+            vehicles = [{"registration_no": v.registration_no, "fir_id": v.fir_id, "make_model": v.make_model} for v in db.query(Vehicle).all()]
+            digitals = [{"evidence_type": d.evidence_type, "value": d.value, "fir_id": d.fir_id} for d in db.query(DigitalEvidence).all()]
 
-    def get_subgraph_around_entity(self, entity_id: str, depth: int = 2) -> Dict[str, Any]:
+            dataset = {
+                "stations": stations,
+                "accused": accused,
+                "firs": firs,
+                "fir_accused_links": links,
+                "vehicles": vehicles,
+                "digital_evidences": digitals
+            }
+            self.build_graph_from_dataset(dataset)
+        except Exception as e:
+            print(f"[GRAPH ERROR] Failed to initialize graph from DB: {e}")
+
+    def get_subgraph_around_entity(self, entity_id: str, depth: int = 2, db=None) -> Dict[str, Any]:
         """Extracts N-hop sub-graph surrounding a target node for Cytoscape visualization."""
+        if self.graph.number_of_nodes() == 0 and db is not None:
+            self.initialize_from_db(db)
+
         target_node = entity_id
         if not self.graph.has_node(target_node):
             # Case-insensitive / partial label match

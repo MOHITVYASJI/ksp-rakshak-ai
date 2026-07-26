@@ -15,7 +15,7 @@ def get_entity_knowledge_graph(
     db: Session = Depends(get_db),
     current_user: Officer = Depends(get_current_user)
 ):
-    subgraph_data = graph_engine.get_subgraph_around_entity(entity_id=entity_id, depth=depth)
+    subgraph_data = graph_engine.get_subgraph_around_entity(entity_id=entity_id, depth=depth, db=db)
 
     AuditLoggerService.log_action(
         db=db,

@@ -40,6 +40,19 @@ app.include_router(audit_router, prefix=settings.API_V1_STR)
 app.include_router(chat_router, prefix=settings.API_V1_STR)
 app.include_router(reports_router, prefix=settings.API_V1_STR)
 
+@app.on_event("startup")
+def startup_event():
+    """Auto-populates Knowledge Graph & Vector Search Index from SQLite/PostgreSQL database on startup."""
+    from app.db.database import SessionLocal
+    from app.services.graph_service import graph_engine
+    from app.services.vector_service import vector_engine
+    db = SessionLocal()
+    try:
+        graph_engine.initialize_from_db(db)
+        vector_engine.initialize_from_db(db)
+    finally:
+        db.close()
+
 # Global Exception Handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
