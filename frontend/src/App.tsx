@@ -11,7 +11,7 @@ import { ReportCenter } from './components/reports/ReportCenter';
 import { AgentChatMessage, KnowledgeGraphData } from '@shared/types';
 import { 
   fetchHealthCheck, sendConversationalAIQuery, fetchAnalyticsOverview, 
-  fetchEntityKnowledgeGraph, fetchFIRCases, fetchAuditLogs 
+  fetchEntityKnowledgeGraph, fetchFIRCases, fetchAuditLogs, loginOfficer 
 } from './services/api';
 import { Network, MapPin, BarChart2, ShieldCheck, FileText } from 'lucide-react';
 
@@ -33,31 +33,36 @@ export default function App() {
   const [firCasesList, setFirCasesList] = useState<any[]>([]);
   const [auditLogsList, setAuditLogsList] = useState<any[]>([]);
 
-  // Health check on mount & load default graph/analytics
+  // Health check on mount, auto-login & load default graph/analytics
   useEffect(() => {
     fetchHealthCheck()
       .then(() => setServerStatus('online'))
       .catch(() => setServerStatus('offline'));
 
-    // Load initial Graph Data
-    fetchEntityKnowledgeGraph('STN_PEENYA', 2)
-      .then(res => setGraphData(res))
-      .catch(err => console.error(err));
+    // Auto authenticate default SHO officer on startup
+    loginOfficer('psi.stn_peenya@ksp.gov.in', 'ksp123')
+      .catch(err => console.warn('Auto-login notice:', err))
+      .finally(() => {
+        // Load initial Graph Data
+        fetchEntityKnowledgeGraph('STN_PEENYA', 2)
+          .then(res => setGraphData(res))
+          .catch(err => console.error(err));
 
-    // Load Analytics Data
-    fetchAnalyticsOverview()
-      .then(res => setAnalyticsData(res))
-      .catch(err => console.error(err));
+        // Load Analytics Data
+        fetchAnalyticsOverview()
+          .then(res => setAnalyticsData(res))
+          .catch(err => console.error(err));
 
-    // Load FIR List
-    fetchFIRCases({ page: 1, page_size: 15 })
-      .then(res => setFirCasesList(res.items || []))
-      .catch(err => console.error(err));
+        // Load FIR List
+        fetchFIRCases({ page: 1, page_size: 15 })
+          .then(res => setFirCasesList(res.items || []))
+          .catch(err => console.error(err));
 
-    // Load Audit Trail
-    fetchAuditLogs(20)
-      .then(res => setAuditLogsList(res || []))
-      .catch(err => console.error(err));
+        // Load Audit Trail
+        fetchAuditLogs(20)
+          .then(res => setAuditLogsList(res || []))
+          .catch(err => console.error(err));
+      });
   }, []);
 
   const handleSendMessage = async (text: string) => {
